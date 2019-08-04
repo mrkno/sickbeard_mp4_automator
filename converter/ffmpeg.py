@@ -328,16 +328,17 @@ class CropMediaInfo(object):
     Information about detected crop, as parsed by ffmpeg.
     The attributes are:
       * format - a MediaFormatInfo object
+      * streams - a list of MediaStreamInfo objects
       * probes - a list of crop probes
     """
 
     def __init__(self, media_info):
-        self.format = media_info
+        self.base_info = media_info
         self.probes = []
 
     def __repr__(self):
-        return 'CropMediaInfo(format=%s, probes=%s)' % (repr(self.format),
-                                                        repr(self.probes))
+        return 'CropMediaInfo(base_info=%s, probes=%s)' % (repr(self.base_info),
+                                                           repr(self.probes))
 
     def parse_ffmpeg(self, raw):
         """
@@ -357,11 +358,38 @@ class CropMediaInfo(object):
         return max(set(input), key = input.count)
 
     def merge_probes(self):
-        self.width = get_most_frequent([x[0] for x in self.probes])
-        self.height = get_most_frequent([y[1] for y in self.probes])
-        self.x_offset = get_most_frequent([xoffset[2] for xoffset in self.probes])
-        self.y_offset = get_most_frequent([yoffset[3] for yoffset in self.probes])
+        self.width = self.get_most_frequent([x[0] for x in self.probes])
+        self.height = self.get_most_frequent([y[1] for y in self.probes])
+        self.x_offset = self.get_most_frequent([xoffset[2] for xoffset in self.probes])
+        self.y_offset = self.get_most_frequent([yoffset[3] for yoffset in self.probes])
 
+    @property
+    def video(self):
+        return self.base_info.video
+
+    @property
+    def posters(self):
+        return self.base_info.posters
+
+    @property
+    def audio(self):
+        return self.base_info.audio
+
+    @property
+    def subtitle(self):
+        return self.base_info.subtitle
+
+    @property
+    def format(self):
+        return self.base_info.format
+
+    @property
+    def streams(self):
+        return self.base_info.streams
+
+    @property
+    def posters_as_video(self):
+        return self.base_info.posters_as_video
 
 class FFMpeg(object):
     """
@@ -494,13 +522,12 @@ class FFMpeg(object):
         for probe in probes:
             p = self._spawn([self.ffmpeg_path,
                             '-ss', str(datetime.timedelta(seconds=probe)), '-i', fname, '-to', '00:00:05', '-vf', 'cropdetect', '-f', 'null', '-'])
-            stdout_data, _ = p.communicate()
+            stdout_data, stderr_data = p.communicate()
             stdout_data = stdout_data.decode(console_encoding, errors='ignore')
+            stderr_data = stderr_data.decode(console_encoding, errors='ignore')
             info.parse_ffmpeg(stdout_data)
+            info.parse_ffmpeg(stderr_data)
         info.merge_probes()
-
-        if not info.x_offset or not info.y_offset:
-            return None
 
         return info
 
