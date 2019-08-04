@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import ptvsd
 import sys
 import os
 import guessit
@@ -18,6 +19,11 @@ from tvdb_api import tvdb_api
 from tmdb_api import tmdb
 from extensions import tmdb_api_key
 from logging.config import fileConfig
+
+print("Waiting for debugger attach")
+ptvsd.enable_attach(address=('localhost', 5678), redirect_output=True)
+ptvsd.wait_for_attach()
+breakpoint()
 
 if sys.version[0] == "3":
     raw_input = input

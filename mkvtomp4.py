@@ -302,8 +302,8 @@ class MkvtoMp4:
                           'y_offset': 0,
                           'x_offset': 0}
 
-            self.log.debug("Height: %s" % result.y)
-            self.log.debug("Width: %s" % result.x)
+            self.log.debug("Height: %s" % result['y'])
+            self.log.debug("Width: %s" % result['x'])
 
             return result
 

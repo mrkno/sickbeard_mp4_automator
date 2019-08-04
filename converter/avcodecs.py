@@ -499,7 +499,12 @@ class VideoCopyCodec(BaseCodec):
     """
     codec_name = 'copy'
     encoder_options = {'map': int,
-                       'source': str}
+                       'source': str,
+                       'mode': str,
+                       'width': int,
+                       'height': int,
+                       'x_offset': int,
+                       'y_offset': int}
 
     def parse_options(self, opt, stream=0):
         safe = self.safe_options(opt)
@@ -511,6 +516,8 @@ class VideoCopyCodec(BaseCodec):
             s = str(0)
         if 'map' in safe:
             optlist.extend(['-map', s + ':' + str(safe['map'])])
+        if 'mode' in safe and safe['mode'] == 'auto_crop':
+            opslist.extend(['-vf', 'crop=%d:%d:%d:%d' % (safe['width'], safe['height'], safe['x_offset'], safe['y_offset'])])
         return optlist
 
 
