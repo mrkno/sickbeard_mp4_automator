@@ -113,7 +113,8 @@ class ReadSettings:
                         'post-process': 'False',
                         'pix-fmt': '',
                         'preopts': '',
-                        'postopts': ''}
+                        'postopts': '',
+                        'auto-crop': 'False'}
         # Default settings for CouchPotato
         cp_defaults = {'host': 'localhost',
                        'port': '5050',
@@ -418,6 +419,11 @@ class ReadSettings:
             self.pix_fmt = None
         else:
             self.pix_fmt = self.pix_fmt.lower().replace(' ', '').split(',')
+
+        try:
+            self.auto_crop = config.getboolean(section, 'auto-crop')
+        except:
+            self.auto_crop = False
 
         self.awl = config.get(section, 'audio-language').strip().lower()  # List of acceptable languages for audio streams to be carried over from the original file, separated by a comma. Blank for all
         if self.awl == '':

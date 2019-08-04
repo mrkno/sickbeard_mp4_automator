@@ -221,6 +221,7 @@ class VideoCodec(BaseCodec):
             * stretch (default) - don't preserve aspect
             * crop - crop extra w/h
             * pad - pad with black bars
+            * auto_crop - automatically detect crop
       * src_width (int) - source width
       * src_height (int) - source height
 
@@ -244,6 +245,8 @@ class VideoCodec(BaseCodec):
         'fps': int,
         'width': int,
         'height': int,
+        'x_offset': int,
+        'y_offset': int,
         'mode': str,
         'src_width': int,
         'src_height': int,
@@ -252,7 +255,7 @@ class VideoCodec(BaseCodec):
         'map': int
     }
 
-    def _aspect_corrections(self, sw, sh, w, h, mode):
+    def _aspect_corrections(self, sw, sh, w, h, x, y, mode):
         # If we don't have source info, we don't try to calculate
         # aspect corrections
         if not sw or not sh:
@@ -279,6 +282,9 @@ class VideoCodec(BaseCodec):
 
         if mode == 'stretch':
             return w, h, None
+
+        if mode == 'auto_crop':
+            return w, h, 'crop=%d:%d:%d:%d' % (w, h, x, y)
 
         target_aspect = (1.0 * w) / (1.0 * h)
 
@@ -355,11 +361,13 @@ class VideoCodec(BaseCodec):
 
         mode = 'stretch'
         if 'mode' in safe:
-            if safe['mode'] in ['stretch', 'crop', 'pad']:
+            if safe['mode'] in ['stretch', 'crop', 'pad', 'auto_crop']:
                 mode = safe['mode']
 
+        x = safe['x_offset'] if 'x_offset' in safe else 0
+        y = safe['y_offset'] if 'y_offset' in safe else 0
         ow, oh = w, h  # FIXED
-        w, h, filters = self._aspect_corrections(sw, sh, w, h, mode)
+        w, h, filters = self._aspect_corrections(sw, sh, w, h, x, y, mode)
 
         safe['width'] = w
         safe['height'] = h

@@ -58,7 +58,8 @@ class MkvtoMp4:
                  logger=None,
                  threads='auto',
                  preopts=None,
-                 postopts=None):
+                 postopts=None,
+                 auto_crop=False):
         # Setup Logging
         if logger:
             self.log = logger
@@ -92,6 +93,7 @@ class MkvtoMp4:
         self.hevc_qsv_decoder = hevc_qsv_decoder
         self.dxva2_decoder = dxva2_decoder
         self.pix_fmt = pix_fmt
+        self.auto_crop = auto_crop
         # Audio settings
         self.audio_codec = audio_codec
         self.audio_bitrate = audio_bitrate
@@ -150,6 +152,7 @@ class MkvtoMp4:
         self.hevc_qsv_decoder = settings.hevc_qsv_decoder
         self.dxva2_decoder = settings.dxva2_decoder
         self.pix_fmt = settings.pix_fmt
+        self.auto_crop = settings.auto_crop
         # Audio settings
         self.audio_codec = settings.acodec
         self.audio_bitrate = settings.abitrate
@@ -235,7 +238,7 @@ class MkvtoMp4:
                 else:
                     self.log.debug("Unable to delete subtitle %s." % subfile)
 
-        dim = self.getDimensions(outputfile)
+        dim = self.getDimensions(outputfile, True)
         input_extension = self.parseFile(inputfile)[2].lower()
         output_extension = self.parseFile(outputfile)[2].lower()
 
@@ -264,29 +267,50 @@ class MkvtoMp4:
             return False
 
     # Determine if a file meets the criteria for processing
-    def needProcessing(self, inputfile):
+    def needProcessing(self, inputfile, dim):
         input_extension = self.parseFile(inputfile)[2]
         # Make sure input and output extensions are compatible. If processMP4 is true, then make sure the input extension is a valid output extension and allow to proceed as well
         if (input_extension.lower() in valid_input_extensions or (self.processMP4 is True and input_extension.lower() in valid_output_extensions)) and self.output_extension.lower() in valid_output_extensions:
-            self.log.debug("%s needs processing." % inputfile)
+            self.log.debug("%s needs processing due to invalid file extension." % inputfile)
             return True
-        else:
-            self.log.debug("%s does not need processing." % inputfile)
-            return False
+        
+        if self.auto_crop:
+            dim = self.getDimensions(inputfile), False
+            if dim.x_offset > 0 or dim.y_offset > 0 or dim.width < dim.video.video_width - 10 or dim.height < dim.video.video_height - 10:
+                self.log.debug("%s needs processing due to crop." % inputfile)
+                return True
+
+        self.log.debug("%s does not need processing." % inputfile)
+        return False
 
     # Get values for width and height to be passed to the tagging classes for proper HD tags
-    def getDimensions(self, inputfile):
+    # Also used to detect crop dimensions for files
+    def getDimensions(self, inputfile, ignorecrop):
         if self.validSource(inputfile):
-            info = Converter(self.FFMPEG_PATH, self.FFPROBE_PATH).probe(inputfile)
+            if self.auto_crop and not ignorecrop:
+                info = Converter(self.FFMPEG_PATH, self.FFPROBE_PATH).crop_detect(inputfile)
+                result = {'y': info.height,
+                          'x': info.width,
+                          'y_offset': info.y_offset,
+                          'x_offset': info.x_offset}
+                self.log.debug("Y Crop Offset: %s" % result.y_offset)
+                self.log.debug("X Crop Offset: %s" % result.x_offset)
+            else:
+                info = Converter(self.FFMPEG_PATH, self.FFPROBE_PATH).probe(inputfile)
+                result = {'y': info.video.video_height,
+                          'x': info.video.video_width,
+                          'y_offset': 0,
+                          'x_offset': 0}
 
-            self.log.debug("Height: %s" % info.video.video_height)
-            self.log.debug("Width: %s" % info.video.video_width)
+            self.log.debug("Height: %s" % result.y)
+            self.log.debug("Width: %s" % result.x)
 
-            return {'y': info.video.video_height,
-                    'x': info.video.video_width}
+            return result
 
         return {'y': 0,
-                'x': 0}
+                'x': 0,
+                'y_offset': 0,
+                'x_offset': 0}
 
     # Estimate the video bitrate
     def estimateVideoBitrate(self, info):
@@ -301,7 +325,7 @@ class MkvtoMp4:
         return ((total_bitrate - audio_bitrate) / 1000) * .95
 
     # Generate a list of options to be passed to FFMPEG based on selected settings and the source file parameters and streams
-    def generateOptions(self, inputfile, original=None):
+    def generateOptions(self, inputfile, original=None, cropdimensions=None):
         # Get path information from the input file
         input_dir, filename, input_extension = self.parseFile(inputfile)
 
@@ -718,6 +742,9 @@ class MkvtoMp4:
             options['preopts'].extend(['-vcodec', 'hevc_qsv'])
         elif vcodec == "h264qsv" and info.video.codec.lower() == "h264" and self.qsv_decoder and (info.video.video_level / 10) < 5:
             options['preopts'].extend(['-vcodec', 'h264_qsv'])
+
+        if self.auto_crop:
+            options['video']['mode'] = 'auto_crop'
 
         # Add width option
         if vwidth:

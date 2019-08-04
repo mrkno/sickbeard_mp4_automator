@@ -7,6 +7,7 @@ import signal
 from subprocess import Popen, PIPE
 import logging
 import locale
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +323,45 @@ class MediaInfo(object):
                 result.append(s)
         return result
 
+class CropMediaInfo(object):
+    """
+    Information about detected crop, as parsed by ffmpeg.
+    The attributes are:
+      * format - a MediaFormatInfo object
+      * probes - a list of crop probes
+    """
+
+    def __init__(self, media_info):
+        self.format = media_info
+        self.probes = []
+
+    def __repr__(self):
+        return 'CropMediaInfo(format=%s, probes=%s)' % (repr(self.format),
+                                                        repr(self.probes))
+
+    def parse_ffmpeg(self, raw):
+        """
+        Parse raw ffmpeg output.
+        """
+        in_format = False
+        current_stream = None
+
+        for line in raw.split('\n'):
+            line = line.strip()
+            if ' crop=' in line:
+                crop_section = line.split(' ')[-1]
+                crop_data = crop_section.split('=')[1]
+                self.probes.append([int(x) for x in crop_data.split(':')])
+    
+    def get_most_frequent(self, input):
+        return max(set(input), key = input.count)
+
+    def merge_probes(self):
+        self.width = get_most_frequent([x[0] for x in self.probes])
+        self.height = get_most_frequent([y[1] for y in self.probes])
+        self.x_offset = get_most_frequent([xoffset[2] for xoffset in self.probes])
+        self.y_offset = get_most_frequent([yoffset[3] for yoffset in self.probes])
+
 
 class FFMpeg(object):
     """
@@ -416,6 +456,50 @@ class FFMpeg(object):
         info.parse_ffprobe(stdout_data)
 
         if not info.format.format and len(info.streams) == 0:
+            return None
+
+        return info
+
+    def crop_detect(self, fname):
+        """
+        Examines the media file and determines accurate video stream dimensions.
+        This is useful for detection and removal of hard coded letterboxing.
+        Returns a CropMediaInfo object, or None if the specified file is
+        not a valid media file.
+
+        >>> info = FFMpeg().probe('test1.ogg')
+        >>> info.width
+        720
+        >>> info.height
+        400
+        >>> info.x_offset
+        0
+        >>> info.y_offset
+        50
+        """
+
+        media_info = self.probe(fname)
+        if media_info is None:
+            return None
+
+        info = CropMediaInfo(media_info)
+
+        # Probe at 3 locations to prevent an overly dark scene cropping entire video
+        probes = (
+            int(media_info.format.duration / 10),
+            int(media_info.format.duration / 2),
+            int(media_info.format.duration * 9 / 10)
+        )
+        
+        for probe in probes:
+            p = self._spawn([self.ffmpeg_path,
+                            '-ss', str(datetime.timedelta(seconds=probe)), '-i', fname, '-to', '00:00:05', '-vf', 'cropdetect', '-f', 'null', '-'])
+            stdout_data, _ = p.communicate()
+            stdout_data = stdout_data.decode(console_encoding, errors='ignore')
+            info.parse_ffmpeg(stdout_data)
+        info.merge_probes()
+
+        if not info.x_offset or not info.y_offset:
             return None
 
         return info

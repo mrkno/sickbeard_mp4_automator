@@ -211,7 +211,20 @@ class Converter(object):
         if not os.path.exists(infile):
             raise ConverterError("Source file doesn't exist: " + infile)
 
-        info = self.ffmpeg.probe(infile)
+        if 'video' in options and 'mode' in options['video'] and options['video']['mode'] == 'auto_crop':
+            if 'width' in options['video'] or 'height' in options['video']:
+                raise ConverterError("Invalid options")
+                
+            info = self.ffmpeg.crop_detect(infile)
+            options = options.copy()
+            v = options['video'] = options['video'].copy()
+            v['width'] = info.width
+            v['height'] = info.height
+            v['x_offset'] = info.x_offset
+            v['y_offset'] = info.y_offset
+        else:
+            info = self.ffmpeg.probe(infile)
+        
         if info is None:
             raise ConverterError("Can't get information about source file")
 
@@ -252,6 +265,13 @@ class Converter(object):
             A video stream, defaults to True
         """
         return self.ffmpeg.probe(fname, posters_as_video)
+
+    def crop_detect(self, fname):
+        """
+        Detect accurate video file dimensions, including crop offsets. See documentation of
+        converter.FFMpeg.crop_detect() for details.
+        """
+        return self.ffmpeg.crop_detect(fname)
 
     def thumbnail(self, fname, time, outfile, size=None, quality=FFMpeg.DEFAULT_JPEG_QUALITY):
         """
