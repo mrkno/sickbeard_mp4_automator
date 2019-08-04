@@ -191,8 +191,9 @@ class MkvtoMp4:
         if not self.validSource(inputfile):
             return False
 
-        if self.needProcessing(inputfile):
-            options = self.generateOptions(inputfile, original=original)
+        should_process, force_transcode = self.needProcessing(inputfile)
+        if should_process:
+            options = self.generateOptions(inputfile, original=original, force_transcode=force_transcode)
 
             try:
                 if reportProgress:
@@ -268,20 +269,20 @@ class MkvtoMp4:
 
     # Determine if a file meets the criteria for processing
     def needProcessing(self, inputfile):
-        input_extension = self.parseFile(inputfile)[2]
-        # Make sure input and output extensions are compatible. If processMP4 is true, then make sure the input extension is a valid output extension and allow to proceed as well
-        if (input_extension.lower() in valid_input_extensions or (self.processMP4 is True and input_extension.lower() in valid_output_extensions)) and self.output_extension.lower() in valid_output_extensions:
-            self.log.debug("%s needs processing due to invalid file extension." % inputfile)
-            return True
-        
         if self.auto_crop:
             dim = self.getDimensions(inputfile, False)
             if dim.x_offset > 0 or dim.y_offset > 0 or dim.width < dim.video.video_width - 10 or dim.height < dim.video.video_height - 10:
                 self.log.debug("%s needs processing due to crop." % inputfile)
-                return True
+                return True, True
+
+        input_extension = self.parseFile(inputfile)[2]
+        # Make sure input and output extensions are compatible. If processMP4 is true, then make sure the input extension is a valid output extension and allow to proceed as well
+        if (input_extension.lower() in valid_input_extensions or (self.processMP4 is True and input_extension.lower() in valid_output_extensions)) and self.output_extension.lower() in valid_output_extensions:
+            self.log.debug("%s needs processing due to invalid file extension." % inputfile)
+            return True, False
 
         self.log.debug("%s does not need processing." % inputfile)
-        return False
+        return False, False
 
     # Get values for width and height to be passed to the tagging classes for proper HD tags
     # Also used to detect crop dimensions for files
@@ -325,7 +326,7 @@ class MkvtoMp4:
         return ((total_bitrate - audio_bitrate) / 1000) * .95
 
     # Generate a list of options to be passed to FFMPEG based on selected settings and the source file parameters and streams
-    def generateOptions(self, inputfile, original=None, cropdimensions=None):
+    def generateOptions(self, inputfile, original=None, force_transcode=False):
         # Get path information from the input file
         input_dir, filename, input_extension = self.parseFile(inputfile)
 
@@ -340,7 +341,7 @@ class MkvtoMp4:
         except:
             vbr = info.format.bitrate / 1000
 
-        if info.video.codec.lower() in self.video_codec:
+        if info.video.codec.lower() in self.video_codec and not force_transcode:
             vcodec = 'copy'
         else:
             vcodec = self.video_codec[0]
